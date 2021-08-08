@@ -356,7 +356,7 @@ ffi_pass_callback_stdin(rnp_ffi_t        ffi,
 {
     char *     keyid = NULL;
     char       target[64] = {0};
-    char       prompt[128] = {0};
+    char       prompt[256] = {0};
     char *     buffer = NULL;
     bool       ok = false;
     cli_rnp_t *rnp = static_cast<cli_rnp_t *>(app_ctx);
@@ -381,7 +381,11 @@ start:
     } else if (!strcmp(pgp_context, "encrypt (symmetric)")) {
         snprintf(prompt, sizeof(prompt), "Enter password to encrypt data: ");
     } else {
-        snprintf(prompt, sizeof(prompt), "Enter password for %s: ", target);
+        snprintf(prompt,
+                 sizeof(prompt),
+                 "Enter password for %s to perform the following operation: %s.\nPassword: ",
+                 target,
+                 pgp_context);
     }
 
     if (!stdin_getpass(prompt, buf, buf_len, rnp)) {
