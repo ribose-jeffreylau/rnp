@@ -33,14 +33,14 @@ jobs:
     strategy:
       matrix:
         env:
-          - BUILD_MODE: normal
-            GPG_VERSION: stable
-          - BUILD_MODE: normal
-            GPG_VERSION: beta
+          # - BUILD_MODE: normal
+          #   GPG_VERSION: stable
+          # - BUILD_MODE: normal
+          #   GPG_VERSION: beta
           - BUILD_MODE: normal
             GPG_VERSION: 2.3.1
-          - BUILD_MODE: sanitize
-            GPG_VERSION: stable
+          # - BUILD_MODE: sanitize
+          #   GPG_VERSION: stable
 
           # TODO: fix build error:
           # libcommon.a(libcommon_a-iobuf.o):(.bss+0x8): multiple definition of `iobuf_debug_mode'
@@ -50,12 +50,12 @@ jobs:
           # - BUILD_MODE: sanitize
           #   GPG_VERSION: beta
 
-          - BUILD_MODE: coverage
-            GPG_VERSION: beta
-            RNP_TESTS: cli_tests
-          - BUILD_MODE: coverage
-            GPG_VERSION: beta
-            RNP_TESTS: rnp_tests
+          # - BUILD_MODE: coverage
+          #   GPG_VERSION: beta
+          #   RNP_TESTS: cli_tests
+          # - BUILD_MODE: coverage
+          #   GPG_VERSION: beta
+          #   RNP_TESTS: rnp_tests
     env: ${{ matrix.env }}
     continue-on-error: true
     steps:
