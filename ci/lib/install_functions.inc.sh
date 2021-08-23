@@ -423,6 +423,9 @@ ensure_automake() {
 }
 
 build_and_install_automake() {
+  command -v automake
+  automake --version
+
   # automake
   automake_build=${LOCAL_BUILDS}/automake
   mkdir -p "${automake_build}"
@@ -431,6 +434,9 @@ build_and_install_automake() {
   tar -xf automake.tar.xz --strip 1
   ./configure --enable-optimizations --prefix=/usr && ${MAKE} -j"${MAKE_PARALLEL}" && ${SUDO} make install
   popd
+
+  command -v automake
+  automake --version
 }
 
 # json-c is installed with install_jsonc
