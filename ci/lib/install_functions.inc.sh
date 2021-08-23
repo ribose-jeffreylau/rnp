@@ -417,12 +417,31 @@ ensure_automake() {
 
   build_and_install_automake
 
+  # Disable automake116 from Ribose's repository as that may be too old.
+  case "${DIST}" in
+    centos)
+      if [[ -r /opt/ribose/ribose-automake116/disable ]]; then
+        >&2 echo "ribose-automake116 will be disabled."
+        . /opt/ribose/ribose-automake116/disable
+      fi
+
+      if rpm --quiet -q ribose-automake116; then
+        >&2 echo "ribose-automake116 is installed.  Removing."
+        # "${SUDO}" "${YUM}" remove -y ribose-automake116
+        "${SUDO}" rpm -e ribose-automake116
+      fi
+      ;;
+  esac
+
   command -v automake
 
   popd
 }
 
 build_and_install_automake() {
+  command -v automake
+  automake --version
+
   # automake
   automake_build=${LOCAL_BUILDS}/automake
   mkdir -p "${automake_build}"
@@ -431,6 +450,9 @@ build_and_install_automake() {
   tar -xf automake.tar.xz --strip 1
   ./configure --enable-optimizations --prefix=/usr && ${MAKE} -j"${MAKE_PARALLEL}" && ${SUDO} make install
   popd
+
+  command -v automake
+  automake --version
 }
 
 # json-c is installed with install_jsonc
@@ -674,21 +696,45 @@ is_version_at_least() {
     installed_version_major="${installed_version%%.*}"
     installed_version_minor="${installed_version#*.}"
     installed_version_minor="${installed_version_minor%%.*}"
+    installed_version_minor="${installed_version_minor:-0}"
+    installed_version_patch="${installed_version#${installed_version_major}.}"
+    installed_version_patch="${installed_version_patch#${installed_version_minor}}"
+    installed_version_patch="${installed_version_patch#.}"
+    installed_version_patch="${installed_version_patch%%.*}"
+    installed_version_patch="${installed_version_patch:-0}"
 
     local need_version_major
     need_version_major="${version_constraint%%.*}"
     need_version_minor="${version_constraint#*.}"
     need_version_minor="${need_version_minor%%.*}"
+    need_version_minor="${need_version_minor:-0}"
+    need_version_patch="${version_constraint##*.}"
+    need_version_patch="${version_constraint#${need_version_major}.}"
+    need_version_patch="${need_version_patch#${need_version_minor}}"
+    need_version_patch="${need_version_patch#.}"
+    need_version_patch="${need_version_patch%%.*}"
+    need_version_patch="${need_version_patch:-0}"
+
+    >&2 echo "
+    -> installed_version_major=${installed_version_major}
+    -> installed_version_minor=${installed_version_minor}
+    -> installed_version_patch=${installed_version_patch}
+    -> need_version_major=${need_version_major}
+    -> need_version_minor=${need_version_minor}
+    -> need_version_patch=${need_version_patch}"
 
     # Naive semver comparison
     if [[ "${installed_version_major}" -lt "${need_version_major}" ]] || \
-       [[ "${installed_version_major}" = "${need_version_major}" && "${installed_version_minor}" -lt "${need_version_minor}" ]]; then
+       [[ "${installed_version_major}" = "${need_version_major}" && "${installed_version_minor}" -lt "${need_version_minor}" ]] || \
+       [[ "${installed_version_major}.${installed_version_minor}" = "${need_version_major}.${need_version_minor}" && "${installed_version_patch}" -lt "${need_version_patch}" ]]; then
       need_to_build=1
     fi
   fi
 
   if [[ 1 = "${need_to_build}" ]]; then
     >&2 echo "Warning: Need to build ${bin_name} since version constraint ${version_constraint} not met."
+  else
+    >&2 echo "No need to build ${bin_name} since version constraint ${version_constraint} is met."
   fi
 
   return "${need_to_build}"
