@@ -52,32 +52,6 @@
         }                                                                 \
     } while (0)
 
-/*
- * @params
- * array:       array of the structures to lookup
- * str_field    name of the field to compare against
- * ret_field    filed to return
- * lookup_value lookup value
- * ret          return value
- */
-#define ARRAY_LOOKUP_BY_STRCASE(array, str_field, ret_field, lookup_value, ret) \
-    do {                                                                        \
-        for (size_t i__ = 0; i__ < ARRAY_SIZE(array); i__++) {                  \
-            if (!rnp_strcasecmp((array)[i__].str_field, (lookup_value))) {      \
-                (ret) = static_cast<decltype(ret)>(((array)[i__].ret_field));   \
-                break;                                                          \
-            }                                                                   \
-        }                                                                       \
-    } while (0)
-
-#ifndef RNP_CONST_TO_VOID_PTR
-#define RNP_CONST_TO_VOID_PTR(a) (reinterpret_cast<void *>(const_cast<char *>(a)))
-#endif
-
-int rnp_strcasecmp(const char *, const char *);
-
-char *rnp_strhexdump_upper(char *dest, const uint8_t *src, size_t length, const char *sep);
-
 /* Portable way to convert bits to bytes */
 
 #define BITS_TO_BYTES(b) (((b) + (CHAR_BIT - 1)) / CHAR_BIT)
@@ -127,15 +101,6 @@ getenv_logname(void)
         name = getenv("USER");
     }
     return name;
-}
-
-inline size_t
-rnp_round_up(size_t n, size_t align_to)
-{
-    if (n % align_to) {
-        n += align_to - (n % align_to);
-    }
-    return n;
 }
 
 #endif

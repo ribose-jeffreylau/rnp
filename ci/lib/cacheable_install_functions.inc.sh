@@ -22,15 +22,24 @@ install_botan() {
       rm -rf "${botan_build}"
     fi
 
-    git clone --depth 1 --branch 2.17.3 https://github.com/randombit/botan "${botan_build}"
+    git clone --depth 1 --branch "${BOTAN_VERSION}" https://github.com/randombit/botan "${botan_build}"
     pushd "${botan_build}"
 
     local osparam=()
     local cpuparam=()
     local run=run
+    local extra_cflags=
     case "${OS}" in
       msys)
-        osparam=(--os=mingw)
+        osparam=(--cc=gcc --os=mingw)
+        run=python
+        # Just get rid of all newlines!
+        BOTAN_MODULES="${BOTAN_MODULES//$'\r\n'/}"
+        BOTAN_MODULES="${BOTAN_MODULES//$'\r'/}"
+        BOTAN_MODULES="${BOTAN_MODULES//$'\n'/}"
+
+        # Deal with "error: ignoring '#pragma comment"
+        extra_cflags="-Wno-error=unknown-pragmas"
         ;;
       linux)
         case "${DIST_VERSION}" in
@@ -43,10 +52,10 @@ install_botan() {
 
     [[ -z "$CPU" ]] || cpuparam=(--cpu="$CPU" --disable-cc-tests)
 
-    local build_target=shared
-    is_use_static_dependencies && build_target=static
+    local build_target="shared,cli"
+    is_use_static_dependencies && build_target="static,cli"
 
-    "${run}" ./configure.py --prefix="${BOTAN_INSTALL}" --with-debug-info --cxxflags="-fno-omit-frame-pointer -fPIC" \
+    "${run}" ./configure.py --prefix="${BOTAN_INSTALL}" --with-debug-info --cxxflags="-fno-omit-frame-pointer -fPIC ${extra_cflags}" \
       ${osparam+"${osparam[@]}"} ${cpuparam+"${cpuparam[@]}"} --without-documentation --without-openssl --build-targets="${build_target}" \
       --minimized-build --enable-modules="$BOTAN_MODULES"
     ${MAKE} -j"${MAKE_PARALLEL}" install
@@ -78,7 +87,7 @@ install_jsonc() {
 
     mkdir -p "${jsonc_build}"
     pushd "${jsonc_build}"
-    wget https://s3.amazonaws.com/json-c_releases/releases/json-c-"${RECOMMENDED_JSONC_VERSION}".tar.gz -O json-c.tar.gz
+    wget https://s3.amazonaws.com/json-c_releases/releases/json-c-"${JSONC_VERSION}".tar.gz -O json-c.tar.gz
     tar xzf json-c.tar.gz --strip 1
 
     autoreconf -ivf
