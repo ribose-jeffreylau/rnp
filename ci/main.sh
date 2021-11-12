@@ -36,6 +36,8 @@ prepare_test_env() {
 
   # update dll search path for windows
   if [[ "${OS}" = "msys" ]]; then
+    # msys shows a different behaviour if all paths are in forward slashes?
+    LOCAL_BUILDS="${LOCAL_BUILDS//\//\\}"
     export PATH="${LOCAL_BUILDS}/rnp-build/lib:${LOCAL_BUILDS}/rnp-build/bin:${LOCAL_BUILDS}/rnp-build/src/lib:${BOTAN_INSTALL}/bin:$PATH"
   fi
 }
