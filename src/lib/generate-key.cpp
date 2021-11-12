@@ -172,7 +172,7 @@ adjust_hash_alg(rnp_keygen_crypto_params_t &crypto)
                                 ecdsa_get_min_hash(crypto.ecc.curve) :
                                 dsa_get_min_hash(crypto.dsa.q_bitlen);
 
-    if (pgp_digest_length(crypto.hash_alg) < pgp_digest_length(min_hash)) {
+    if (rnp::Hash::size(crypto.hash_alg) < rnp::Hash::size(min_hash)) {
         crypto.hash_alg = min_hash;
     }
 }
@@ -306,12 +306,6 @@ set_default_user_prefs(pgp_user_prefs_t &prefs)
         prefs.set_z_algs(std::vector<uint8_t>(
           DEFAULT_COMPRESS_ALGS, DEFAULT_COMPRESS_ALGS + ARRAY_SIZE(DEFAULT_COMPRESS_ALGS)));
     }
-}
-
-static const char *
-pgp_show_pka(pgp_pubkey_alg_t pka)
-{
-    return id_str_pair::lookup(pubkey_alg_map, pka);
 }
 
 static void

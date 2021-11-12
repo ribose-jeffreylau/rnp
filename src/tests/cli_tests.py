@@ -2501,6 +2501,27 @@ class Misc(unittest.TestCase):
             self.assertRegex(err, CORE_DUMP)
             self.assertNotRegex(err, NO_CORE_DUMP)
 
+    def test_backend_version(self):
+        BOTAN_BACKEND_VERSION = r'(?s)^.*.' \
+        'Backend: Botan.*' \
+        'Backend version: ([a-zA-z\.0-9]+).*$'
+        OPENSSL_BACKEND_VERSION = r'(?s)^.*' \
+        'Backend: OpenSSL.*' \
+        'Backend version: ([a-zA-z\.0-9]+).*$'
+        ret, out, err = run_proc(RNP, ['--version'])
+        self.assertEqual(ret, 0)
+        match = re.match(BOTAN_BACKEND_VERSION, out);
+        backend_prog = 'botan'
+        if not match:
+            match = re.match(OPENSSL_BACKEND_VERSION, out);
+            backend_prog = 'openssl'
+        self.assertTrue(match)
+        # check that botan or openssl executable binary exists in $PATH
+        if shutil.which(backend_prog) is not None:
+            ret, out, err = run_proc(backend_prog, ['version'])
+            self.assertEqual(ret, 0)
+            self.assertIn(match.group(1), out)
+
     def test_wrong_mpi_bit_count(self):
         WRONG_MPI_BITS = r'(?s)^.*Warning! Wrong mpi bit count: got [0-9]+, but actual is [0-9]+.*$'
         # Make sure message is not displayed on normal keys
@@ -2705,8 +2726,7 @@ class Encryption(unittest.TestCase):
             CIPHERS.remove('TWOFISH')
         AEAD_C = list_upto(CIPHERS, Encryption.RUNS)
         AEAD_M = list_upto([None, 'eax', 'ocb'], Encryption.RUNS)
-        AEAD_B = list_upto([None, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 18,
-                            24, 30, 40, 50, 56], Encryption.RUNS)
+        AEAD_B = list_upto([None, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16], Encryption.RUNS)
 
         # Encrypt and decrypt cleartext using the AEAD
         for size, cipher, aead, bits, z in zip(Encryption.SIZES_R, AEAD_C,

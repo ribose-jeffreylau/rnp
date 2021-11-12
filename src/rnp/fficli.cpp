@@ -221,7 +221,7 @@ cli_rnp_get_confirmation(const cli_rnp_t *rnp, const char *msg, ...)
             return false;
         }
 
-        rnp_strip_eol(reply);
+        rnp::strip_eol(reply);
 
         if (strlen(reply) > 0) {
             if (toupper(reply[0]) == 'Y') {
@@ -239,6 +239,30 @@ cli_rnp_get_confirmation(const cli_rnp_t *rnp, const char *msg, ...)
     return false;
 }
 
+static bool
+rnp_ask_filename(const std::string &msg, std::string &res, cli_rnp_t &rnp)
+{
+    fprintf(rnp.userio_out, "%s", msg.c_str());
+    fflush(rnp.userio_out);
+    char        fname[128] = {0};
+    std::string path;
+    do {
+        if (!fgets(fname, sizeof(fname), rnp.userio_in)) {
+            return false;
+        }
+        path = path + std::string(fname);
+        if (rnp::strip_eol(path)) {
+            res = path;
+            return true;
+        }
+        if (path.size() >= 2048) {
+            fprintf(rnp.userio_out, "%s", "Too long filename, aborting.");
+            fflush(rnp.userio_out);
+            return false;
+        }
+    } while (1);
+}
+
 /** @brief checks whether file exists already and asks user for the new filename
  *  @param path output file name with path. May be an empty string, then user is asked for it.
  *  @param res resulting output path will be stored here.
@@ -249,41 +273,31 @@ cli_rnp_get_confirmation(const cli_rnp_t *rnp, const char *msg, ...)
 static bool
 rnp_get_output_filename(const std::string &path, std::string &res, cli_rnp_t &rnp)
 {
-    const size_t maxlen = PATH_MAX;
-    char         newpath[maxlen] = {0};
-    if (path.empty()) {
-        fprintf(rnp.userio_out, "Please enter the output filename: ");
-        fflush(rnp.userio_out);
-        if (!fgets(newpath, maxlen, rnp.userio_in)) {
-            return false;
-        }
-        rnp_strip_eol(newpath);
-    } else {
-        strncpy(newpath, path.c_str(), maxlen - 1);
-        newpath[maxlen - 1] = '\0';
+    std::string newpath = path;
+    if (newpath.empty() &&
+        !rnp_ask_filename("Please enter the output filename: ", newpath, rnp)) {
+        return false;
     }
 
     while (true) {
-        if (!rnp_file_exists(newpath)) {
+        if (!rnp_file_exists(newpath.c_str())) {
             res = newpath;
             return true;
         }
         if (rnp.cfg().get_bool(CFG_OVERWRITE) ||
             cli_rnp_get_confirmation(
-              &rnp, "File '%s' already exists. Would you like to overwrite it?", newpath)) {
-            rnp_unlink(newpath);
+              &rnp,
+              "File '%s' already exists. Would you like to overwrite it?",
+              newpath.c_str())) {
+            rnp_unlink(newpath.c_str());
             res = newpath;
             return true;
         }
 
-        fprintf(rnp.userio_out, "Please enter the new filename: ");
-        fflush(rnp.userio_out);
-        if (!fgets(newpath, maxlen, rnp.userio_in)) {
+        if (!rnp_ask_filename("Please enter the new filename: ", newpath, rnp)) {
             return false;
         }
-
-        rnp_strip_eol(newpath);
-        if (!strlen(newpath)) {
+        if (newpath.empty()) {
             return false;
         }
     }
@@ -336,7 +350,7 @@ stdin_getpass(const char *prompt, char *buffer, size_t size, cli_rnp_t *rnp)
         goto end;
     }
 
-    rnp_strip_eol(buffer);
+    rnp::strip_eol(buffer);
     ok = true;
 end:
 #ifndef _WIN32
@@ -431,7 +445,7 @@ ffi_pass_callback_file(rnp_ffi_t        ffi,
     if (!fgets(buf, buf_len, fp)) {
         return false;
     }
-    rnp_strip_eol(buf);
+    rnp::strip_eol(buf);
     return true;
 }
 
@@ -2841,4 +2855,49 @@ done:
     rnp_output_destroy(output);
     rnp_op_verify_destroy(verify);
     return res;
+}
+
+void
+cli_rnp_print_praise(void)
+{
+    printf("%s\n%s\n", PACKAGE_STRING, PACKAGE_BUGREPORT);
+    printf("Backend: %s\n", rnp_backend_string());
+    printf("Backend version: %s\n", rnp_backend_version());
+    printf("Supported algorithms:\n");
+    cli_rnp_print_feature(stdout, RNP_FEATURE_PK_ALG, "Public key");
+    cli_rnp_print_feature(stdout, RNP_FEATURE_SYMM_ALG, "Encryption");
+    cli_rnp_print_feature(stdout, RNP_FEATURE_AEAD_ALG, "AEAD");
+    cli_rnp_print_feature(stdout, RNP_FEATURE_PROT_MODE, "Key protection");
+    cli_rnp_print_feature(stdout, RNP_FEATURE_HASH_ALG, "Hash");
+    cli_rnp_print_feature(stdout, RNP_FEATURE_COMP_ALG, "Compression");
+    cli_rnp_print_feature(stdout, RNP_FEATURE_CURVE, "Curves");
+    printf("Please report security issues at (https://www.rnpgp.org/feedback) and\n"
+           "general bugs at https://github.com/rnpgp/rnp/issues.\n");
+}
+
+void
+cli_rnp_print_feature(FILE *fp, const char *type, const char *printed_type)
+{
+    char * result = NULL;
+    size_t count;
+    if (rnp_supported_features(type, &result) != RNP_SUCCESS) {
+        ERR_MSG("Failed to list supported features: %s", type);
+        return;
+    }
+    json_object *jso = json_tokener_parse(result);
+    if (!jso) {
+        ERR_MSG("Failed to parse JSON with features: %s", type);
+        goto done;
+    }
+    fprintf(fp, "%s: ", printed_type);
+    count = json_object_array_length(jso);
+    for (size_t idx = 0; idx < count; idx++) {
+        json_object *val = json_object_array_get_idx(jso, idx);
+        fprintf(fp, " %s%s", json_object_get_string(val), idx < count - 1 ? "," : "");
+    }
+    fputs("\n", fp);
+    fflush(fp);
+    json_object_put(jso);
+done:
+    rnp_buffer_destroy(result);
 }

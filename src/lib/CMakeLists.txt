@@ -121,6 +121,7 @@ if(CRYPTO_BACKEND_OPENSSL)
     crypto/eddsa_ossl.cpp
     crypto/dl_ossl.cpp
     crypto/elgamal_ossl.cpp
+    crypto/hash_common.cpp
     crypto/hash_ossl.cpp
     crypto/hash_crc24.cpp
     crypto/mpi.cpp
@@ -148,6 +149,7 @@ elseif(CRYPTO_BACKEND_BOTAN)
     crypto/ecdsa.cpp
     crypto/eddsa.cpp
     crypto/elgamal.cpp
+    crypto/hash_common.cpp
     crypto/hash.cpp
     crypto/mpi.cpp
     crypto/rng.cpp
@@ -194,7 +196,8 @@ add_library(librnp-obj OBJECT
   generate-key.cpp
   key-provider.cpp
   logging.cpp
-  misc.cpp
+  json-utils.cpp
+  utils.cpp
   pass-provider.cpp
   pgp-key.cpp
   rnp.cpp
@@ -243,6 +246,15 @@ set_target_properties(librnp
 
 if (BUILD_SHARED_LIBS)
   add_library(librnp-static STATIC $<TARGET_OBJECTS:librnp-obj> $<TARGET_OBJECTS:rnp-common>)
+ # Limit symbols export only to rnp_* functions.
+  if (APPLE)
+    # use -export_symbols_list on Apple OSs
+    target_link_options(librnp PRIVATE -Wl,-exported_symbols_list "${CMAKE_CURRENT_SOURCE_DIR}/librnp.symbols")
+    set_target_properties(librnp PROPERTIES LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/librnp.symbols")
+  elseif(NOT WIN32)
+    target_link_options(librnp PRIVATE "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/librnp.vsc")
+    set_target_properties(librnp PROPERTIES LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/librnp.vsc")
+  endif()
 else()
   add_library(librnp-static ALIAS librnp)
 endif()

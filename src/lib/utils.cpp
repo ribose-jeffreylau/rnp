@@ -1,5 +1,5 @@
-/*-
- * Copyright (c) 2018 Ribose Inc.
+/*
+ * Copyright (c) 2021, [Ribose Inc](https://www.ribose.com).
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -24,35 +24,42 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef RNP_MPI_H_
-#define RNP_MPI_H_
+#include "types.h"
+#include "str-utils.h"
 
-#include <cstdint>
-#include <cstdbool>
-#include <cstddef>
+const char *
+id_str_pair::lookup(const id_str_pair pair[], int id, const char *notfound)
+{
+    while (pair && pair->str) {
+        if (pair->id == id) {
+            return pair->str;
+        }
+        pair++;
+    }
+    return notfound;
+}
 
-/* 16384 bits should be pretty enough for now */
-#define PGP_MPINT_BITS (16384)
-#define PGP_MPINT_SIZE (PGP_MPINT_BITS >> 3)
+int
+id_str_pair::lookup(const id_str_pair pair[], const char *str, int notfound)
+{
+    while (pair && pair->str) {
+        if (rnp::str_case_eq(str, pair->str)) {
+            return pair->id;
+        }
+        pair++;
+    }
+    return notfound;
+}
 
-/** multi-precision integer, used in signatures and public/secret keys */
-typedef struct pgp_mpi_t {
-    uint8_t mpi[PGP_MPINT_SIZE];
-    size_t  len;
-} pgp_mpi_t;
-
-bool mem2mpi(pgp_mpi_t *val, const void *mem, size_t len);
-
-void mpi2mem(const pgp_mpi_t *val, void *mem);
-
-char *mpi2hex(const pgp_mpi_t *val);
-
-size_t mpi_bits(const pgp_mpi_t *val);
-
-size_t mpi_bytes(const pgp_mpi_t *val);
-
-bool mpi_equal(const pgp_mpi_t *val1, const pgp_mpi_t *val2);
-
-void mpi_forget(pgp_mpi_t *val);
-
-#endif // MPI_H_
+int
+id_str_pair::lookup(const id_str_pair pair[], const std::vector<uint8_t> &bytes, int notfound)
+{
+    while (pair && pair->str) {
+        if ((strlen(pair->str) == bytes.size()) &&
+            !memcmp(pair->str, bytes.data(), bytes.size())) {
+            return pair->id;
+        }
+        pair++;
+    }
+    return notfound;
+}
