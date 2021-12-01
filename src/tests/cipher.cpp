@@ -39,8 +39,7 @@ extern rng_t global_rng;
 
 TEST_F(rnp_tests, hash_test_success)
 {
-    pgp_hash_t hash = {0};
-    uint8_t    hash_output[PGP_MAX_HASH_SIZE];
+    uint8_t hash_output[PGP_MAX_HASH_SIZE];
 
     const pgp_hash_alg_t hash_algs[] = {PGP_HASH_MD5,
                                         PGP_HASH_SHA1,
@@ -73,24 +72,25 @@ TEST_F(rnp_tests, hash_test_success)
     for (int i = 0; hash_algs[i] != PGP_HASH_UNKNOWN; ++i) {
 #if !defined(ENABLE_SM2)
         if (hash_algs[i] == PGP_HASH_SM3) {
-            assert_false(pgp_hash_create(&hash, hash_algs[i]));
-            size_t hash_size = pgp_digest_length(hash_algs[i]);
+            assert_throw({ rnp::Hash hash(hash_algs[i]); });
+            size_t hash_size = rnp::Hash::size(hash_algs[i]);
             assert_int_equal(hash_size * 2, strlen(hash_alg_expected_outputs[i]));
             continue;
         }
 #endif
-        assert_true(pgp_hash_create(&hash, hash_algs[i]));
-        size_t hash_size = pgp_digest_length(hash_algs[i]);
+        rnp::Hash hash(hash_algs[i]);
+        size_t    hash_size = rnp::Hash::size(hash_algs[i]);
         assert_int_equal(hash_size * 2, strlen(hash_alg_expected_outputs[i]));
 
-        pgp_hash_add(&hash, test_input, 1);
-        pgp_hash_add(&hash, test_input + 1, sizeof(test_input) - 1);
-        pgp_hash_finish(&hash, hash_output);
+        hash.add(test_input, 1);
+        hash.add(test_input + 1, sizeof(test_input) - 1);
+        hash.finish(hash_output);
 
-        assert_int_equal(
-          0,
-          test_value_equal(
-            pgp_hash_name(&hash), hash_alg_expected_outputs[i], hash_output, hash_size));
+        assert_int_equal(0,
+                         test_value_equal(rnp::Hash::name(hash_algs[i]),
+                                          hash_alg_expected_outputs[i],
+                                          hash_output,
+                                          hash_size));
     }
 }
 
@@ -140,7 +140,7 @@ TEST_F(rnp_tests, pkcs1_rsa_test_success)
     key_desc.hash_alg = PGP_HASH_SHA256;
     key_desc.rsa.modulus_bit_len = 1024;
     key_desc.rng = &global_rng;
-    assert_true(pgp_generate_seckey(&key_desc, &seckey, true));
+    assert_true(pgp_generate_seckey(key_desc, seckey, true));
     key_rsa = &seckey.material.rsa;
 
     assert_rnp_success(rsa_encrypt_pkcs1(&global_rng, &enc, ptext, 3, key_rsa));
@@ -161,7 +161,7 @@ TEST_F(rnp_tests, rnp_test_eddsa)
     key_desc.rng = &global_rng;
 
     pgp_key_pkt_t seckey;
-    assert_true(pgp_generate_seckey(&key_desc, &seckey, true));
+    assert_true(pgp_generate_seckey(key_desc, seckey, true));
 
     const uint8_t      hash[32] = {0};
     pgp_ec_signature_t sig = {{{0}}};
@@ -195,7 +195,7 @@ TEST_F(rnp_tests, rnp_test_x25519)
     key_desc.rng = &global_rng;
     key_desc.ecc.curve = PGP_CURVE_25519;
 
-    assert_true(pgp_generate_seckey(&key_desc, &seckey, true));
+    assert_true(pgp_generate_seckey(key_desc, seckey, true));
     /* check for length and correctly tweaked bits */
     assert_int_equal(seckey.material.ec.x.len, 32);
     assert_int_equal(seckey.material.ec.x.mpi[31] & 7, 0);
@@ -276,8 +276,8 @@ TEST_F(rnp_tests, ecdsa_signverify_success)
         pgp_key_pkt_t seckey1;
         pgp_key_pkt_t seckey2;
 
-        assert_true(pgp_generate_seckey(&key_desc, &seckey1, true));
-        assert_true(pgp_generate_seckey(&key_desc, &seckey2, true));
+        assert_true(pgp_generate_seckey(key_desc, seckey1, true));
+        assert_true(pgp_generate_seckey(key_desc, seckey2, true));
 
         const pgp_ec_key_t *key1 = &seckey1.material.ec;
         const pgp_ec_key_t *key2 = &seckey2.material.ec;
@@ -318,7 +318,7 @@ TEST_F(rnp_tests, ecdh_roundtrip)
         key_desc.rng = &global_rng;
 
         pgp_key_pkt_t ecdh_key1;
-        assert_true(pgp_generate_seckey(&key_desc, &ecdh_key1, true));
+        assert_true(pgp_generate_seckey(key_desc, ecdh_key1, true));
 
         pgp_fingerprint_t ecdh_key1_fpr = {};
         assert_rnp_success(pgp_fingerprint(ecdh_key1_fpr, ecdh_key1));
@@ -349,7 +349,7 @@ TEST_F(rnp_tests, ecdh_decryptionNegativeCases)
     key_desc.rng = &global_rng;
 
     pgp_key_pkt_t ecdh_key1;
-    assert_true(pgp_generate_seckey(&key_desc, &ecdh_key1, true));
+    assert_true(pgp_generate_seckey(key_desc, ecdh_key1, true));
 
     pgp_fingerprint_t ecdh_key1_fpr = {};
     assert_rnp_success(pgp_fingerprint(ecdh_key1_fpr, ecdh_key1));
@@ -402,7 +402,7 @@ TEST_F(rnp_tests, sm2_roundtrip)
     assert_true(rng_get_data(&global_rng, key, sizeof(key)));
 
     pgp_key_pkt_t seckey;
-    assert_true(pgp_generate_seckey(&key_desc, &seckey, true));
+    assert_true(pgp_generate_seckey(key_desc, seckey, true));
 
     const pgp_ec_key_t *eckey = &seckey.material.ec;
 
@@ -432,12 +432,11 @@ TEST_F(rnp_tests, sm2_sm3_signature_test)
     const char *msg = "no backdoors here";
 
     pgp_ec_key_t       sm2_key;
-    pgp_hash_t         hash;
     rng_t              rng;
     pgp_ec_signature_t sig;
 
     pgp_hash_alg_t hash_alg = PGP_HASH_SM3;
-    const size_t   hash_len = pgp_digest_length(hash_alg);
+    const size_t   hash_len = rnp::Hash::size(hash_alg);
 
     uint8_t digest[PGP_MAX_HASH_SIZE];
 
@@ -452,27 +451,21 @@ TEST_F(rnp_tests, sm2_sm3_signature_test)
 
     assert_int_equal(sm2_validate_key(&rng, &sm2_key, true), RNP_SUCCESS);
 
-    pgp_hash_create(&hash, hash_alg);
+    rnp::Hash hash(hash_alg);
 
-    assert_int_equal(sm2_compute_za(&sm2_key, &hash, "sm2_p256_test@example.com"),
-                     RNP_SUCCESS);
-
-    pgp_hash_add(&hash, msg, strlen(msg));
-
-    pgp_hash_finish(&hash, digest);
+    assert_int_equal(sm2_compute_za(sm2_key, hash, "sm2_p256_test@example.com"), RNP_SUCCESS);
+    hash.add(msg, strlen(msg));
+    assert_int_equal(hash.finish(digest), hash_len);
 
     // First generate a signature, then verify it
     assert_int_equal(sm2_sign(&rng, &sig, hash_alg, digest, hash_len, &sm2_key), RNP_SUCCESS);
-
     assert_int_equal(sm2_verify(&sig, hash_alg, digest, hash_len, &sm2_key), RNP_SUCCESS);
 
     // Check that invalid signatures are rejected
     digest[0] ^= 1;
-
     assert_int_not_equal(sm2_verify(&sig, hash_alg, digest, hash_len, &sm2_key), RNP_SUCCESS);
 
     digest[0] ^= 1;
-
     assert_int_equal(sm2_verify(&sig, hash_alg, digest, hash_len, &sm2_key), RNP_SUCCESS);
 
     // Now verify a known good signature for this key/message (generated by GmSSL)
@@ -489,12 +482,11 @@ TEST_F(rnp_tests, sm2_sha256_signature_test)
     const char *msg = "hi chappy";
 
     pgp_ec_key_t       sm2_key;
-    pgp_hash_t         hash;
     rng_t              rng;
     pgp_ec_signature_t sig;
 
     pgp_hash_alg_t hash_alg = PGP_HASH_SHA256;
-    const size_t   hash_len = pgp_digest_length(hash_alg);
+    const size_t   hash_len = rnp::Hash::size(hash_alg);
 
     uint8_t digest[PGP_MAX_HASH_SIZE];
 
@@ -509,26 +501,20 @@ TEST_F(rnp_tests, sm2_sha256_signature_test)
 
     assert_int_equal(sm2_validate_key(&rng, &sm2_key, true), RNP_SUCCESS);
 
-    pgp_hash_create(&hash, hash_alg);
-
-    assert_int_equal(sm2_compute_za(&sm2_key, &hash, "sm2test@example.com"), RNP_SUCCESS);
-
-    pgp_hash_add(&hash, msg, strlen(msg));
-
-    pgp_hash_finish(&hash, digest);
+    rnp::Hash hash(hash_alg);
+    assert_int_equal(sm2_compute_za(sm2_key, hash, "sm2test@example.com"), RNP_SUCCESS);
+    hash.add(msg, strlen(msg));
+    assert_int_equal(hash.finish(digest), hash_len);
 
     // First generate a signature, then verify it
     assert_int_equal(sm2_sign(&rng, &sig, hash_alg, digest, hash_len, &sm2_key), RNP_SUCCESS);
-
     assert_int_equal(sm2_verify(&sig, hash_alg, digest, hash_len, &sm2_key), RNP_SUCCESS);
 
     // Check that invalid signatures are rejected
     digest[0] ^= 1;
-
     assert_int_not_equal(sm2_verify(&sig, hash_alg, digest, hash_len, &sm2_key), RNP_SUCCESS);
 
     digest[0] ^= 1;
-
     assert_int_equal(sm2_verify(&sig, hash_alg, digest, hash_len, &sm2_key), RNP_SUCCESS);
 
     // Now verify a known good signature for this key/message (generated by GmSSL)
@@ -576,17 +562,17 @@ TEST_F(rnp_tests, test_dsa_roundtrip)
         key_desc.dsa.q_bitlen = keys[i].q;
         key_desc.rng = &global_rng;
 
-        assert_true(pgp_generate_seckey(&key_desc, &seckey, true));
+        assert_true(pgp_generate_seckey(key_desc, seckey, true));
         // try to prevent timeouts in travis-ci
         printf("p: %zu q: %zu h: %s\n",
                key_desc.dsa.p_bitlen,
                key_desc.dsa.q_bitlen,
-               pgp_show_hash_alg(key_desc.hash_alg));
+               rnp::Hash::name(key_desc.hash_alg));
         fflush(stdout);
 
         pgp_dsa_key_t *key1 = &seckey.material.dsa;
 
-        size_t h_size = pgp_digest_length(keys[i].h);
+        size_t h_size = rnp::Hash::size(keys[i].h);
         assert_int_equal(dsa_sign(&global_rng, &sig, message, h_size, key1), RNP_SUCCESS);
         assert_int_equal(dsa_verify(&sig, message, h_size, key1), RNP_SUCCESS);
     }
@@ -614,18 +600,18 @@ TEST_F(rnp_tests, test_dsa_verify_negative)
     key_desc.dsa.q_bitlen = key.q;
     key_desc.rng = &global_rng;
 
-    assert_true(pgp_generate_seckey(&key_desc, &sec_key1, true));
+    assert_true(pgp_generate_seckey(key_desc, sec_key1, true));
     // try to prevent timeouts in travis-ci
     printf("p: %zu q: %zu h: %s\n",
            key_desc.dsa.p_bitlen,
            key_desc.dsa.q_bitlen,
-           pgp_show_hash_alg(key_desc.hash_alg));
-    assert_true(pgp_generate_seckey(&key_desc, &sec_key2, true));
+           rnp::Hash::name(key_desc.hash_alg));
+    assert_true(pgp_generate_seckey(key_desc, sec_key2, true));
 
     pgp_dsa_key_t *key1 = &sec_key1.material.dsa;
     pgp_dsa_key_t *key2 = &sec_key2.material.dsa;
 
-    size_t h_size = pgp_digest_length(key.h);
+    size_t h_size = rnp::Hash::size(key.h);
     assert_int_equal(dsa_sign(&global_rng, &sig, message, h_size, key1), RNP_SUCCESS);
     // wrong key used
     assert_int_equal(dsa_verify(&sig, message, h_size, key2), RNP_ERROR_SIGNATURE_INVALID);
@@ -633,6 +619,12 @@ TEST_F(rnp_tests, test_dsa_verify_negative)
     message[0] = ~message[0];
     assert_int_equal(dsa_verify(&sig, message, h_size, key1), RNP_ERROR_SIGNATURE_INVALID);
 }
+
+// platforms known to not have a robust response can compile with
+// -DS2K_MINIMUM_TUNING_RATIO=2 (or whatever they need)
+#ifndef S2K_MINIMUM_TUNING_RATIO
+#define S2K_MINIMUM_TUNING_RATIO 6
+#endif
 
 TEST_F(rnp_tests, s2k_iteration_tuning)
 {
@@ -647,9 +639,10 @@ TEST_F(rnp_tests, s2k_iteration_tuning)
     const size_t iters_100 = pgp_s2k_compute_iters(hash_alg, 100, TRIAL_MSEC);
     const size_t iters_10 = pgp_s2k_compute_iters(hash_alg, 10, TRIAL_MSEC);
 
-    // fprintf(stderr, "%d %d\n", iters_10, iters_100);
+    double ratio = static_cast<double>(iters_100) / iters_10;
+    printf("s2k iteration tuning ratio: %g, (%zu:%zu)\n", ratio, iters_10, iters_100);
     // Test roughly linear cost, often skeyed by clock idle
-    assert_greater_than(static_cast<double>(iters_100) / iters_10, 6);
+    assert_greater_than(ratio, S2K_MINIMUM_TUNING_RATIO);
 
     // Should not crash for unknown hash algorithm
     assert_int_equal(pgp_s2k_compute_iters(PGP_HASH_UNKNOWN, 1000, TRIAL_MSEC), 0);

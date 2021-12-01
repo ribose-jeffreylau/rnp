@@ -66,23 +66,28 @@ TEST_F(rnp_tests, test_key_validate)
     assert_true(all_keys_valid(pubring, key));
     delete pubring;
 
-    /* secret key doesn't have expired binding signature so considered as valid */
+    /* secret key is marked is expired as well */
     secring = new rnp_key_store_t(PGP_KEY_STORE_GPG, "data/keyrings/1/secring.gpg");
     assert_true(rnp_key_store_load_from_path(secring, NULL));
     assert_non_null(key = rnp_tests_get_key_by_id(secring, "1d7e8a5393c997a8", NULL));
-    assert_true(key->valid());
-    assert_false(key->expired());
-    assert_true(all_keys_valid(secring));
+    assert_false(key->valid());
+    assert_true(key->expired());
+    assert_true(all_keys_valid(secring, key));
     delete secring;
 
     pubring = new rnp_key_store_t(PGP_KEY_STORE_GPG, "data/keyrings/2/pubring.gpg");
     assert_true(rnp_key_store_load_from_path(pubring, NULL));
     assert_true(all_keys_valid(pubring));
-    delete pubring;
 
+    /* secret keyring doesn't have signatures - so keys are marked as invalid */
     secring = new rnp_key_store_t(PGP_KEY_STORE_GPG, "data/keyrings/2/secring.gpg");
     assert_true(rnp_key_store_load_from_path(secring, NULL));
+    assert_false(all_keys_valid(secring));
+    /* but after adding signatures from public it is marked as valid */
+    assert_non_null(key = rnp_tests_get_key_by_id(pubring, "dc70c124a50283f1", NULL));
+    assert_non_null(rnp_key_store_import_key(secring, key, true, NULL));
     assert_true(all_keys_valid(secring));
+    delete pubring;
     delete secring;
 
     pubring = new rnp_key_store_t(PGP_KEY_STORE_KBX, "data/keyrings/3/pubring.kbx");
@@ -102,9 +107,10 @@ TEST_F(rnp_tests, test_key_validate)
     assert_true(all_keys_valid(pubring));
     delete pubring;
 
+    /* secre keyring doesn't have certifications - so marked as invalid */
     secring = new rnp_key_store_t(PGP_KEY_STORE_GPG, "data/keyrings/4/secring.pgp");
     assert_true(rnp_key_store_load_from_path(secring, NULL));
-    assert_true(all_keys_valid(secring));
+    assert_false(all_keys_valid(secring));
     delete secring;
 
     pubring = new rnp_key_store_t(PGP_KEY_STORE_GPG, "data/keyrings/5/pubring.gpg");
@@ -593,14 +599,14 @@ TEST_F(rnp_tests, test_key_expiry_direct_sig)
     pgp_password_provider_t pprov = {.callback = string_copy_password_callback,
                                      .userdata = (void *) "password"};
     key->unlock(pprov);
-    assert_true(signature_calculate_direct(&key->pkt(), &sig, &key->pkt()));
+    assert_true(signature_calculate_direct(key->pkt(), sig, key->pkt()));
     key->add_sig(sig, PGP_UID_NONE);
     key->revalidate(*secring);
 
-    /* key is still valid since it is secret */
+    /* key becomsed invalid even since it is secret */
     assert_int_equal(key->expiration(), 1000);
-    assert_true(key->valid());
-    assert_false(key->expired());
+    assert_false(key->valid());
+    assert_true(key->expired());
 
     rnp_key_store_t *pubring =
       new rnp_key_store_t(PGP_KEY_STORE_GPG, KEYSIG_PATH "alice-sub-pub.pgp");
@@ -626,17 +632,19 @@ TEST_F(rnp_tests, test_key_expiry_direct_sig)
     assert_false(subpub->expired());
 
     /* add primary userid with smaller expiration date */
+    rng_t rng;
+    rng_init(&rng, RNG_DRBG);
     rnp_selfsig_cert_info_t selfsig1 = {};
     const char *            boris = "Boris <boris@rnp>";
     memcpy(selfsig1.userid, boris, strlen(boris));
     selfsig1.key_expiration = 100;
     selfsig1.primary = true;
-    assert_true(pgp_key_add_userid_certified(key, &key->pkt(), PGP_HASH_SHA256, &selfsig1));
+    key->add_uid_cert(selfsig1, PGP_HASH_SHA256, rng);
     key->revalidate(*secring);
-    /* key is still valid since it is secret, however expiration was changed */
+    /* key becomes invalid even it is secret */
     assert_int_equal(key->expiration(), 100);
-    assert_true(key->valid());
-    assert_false(key->expired());
+    assert_false(key->valid());
+    assert_true(key->expired());
 
     delete secring;
     delete pubring;
@@ -656,7 +664,7 @@ TEST_F(rnp_tests, test_key_expiry_direct_sig)
     sig.set_keyid(key->keyid());
 
     key->unlock(pprov);
-    assert_true(signature_calculate_direct(&key->pkt(), &sig, &key->pkt()));
+    assert_true(signature_calculate_direct(key->pkt(), sig, key->pkt()));
     key->add_sig(sig, PGP_UID_NONE);
     key->revalidate(*secring);
     assert_int_equal(key->expiration(), 6);
@@ -665,9 +673,10 @@ TEST_F(rnp_tests, test_key_expiry_direct_sig)
     memcpy(selfsig1.userid, boris, strlen(boris));
     selfsig1.key_expiration = 0;
     selfsig1.primary = true;
-    assert_true(pgp_key_add_userid_certified(key, &key->pkt(), PGP_HASH_SHA256, &selfsig1));
+    key->add_uid_cert(selfsig1, PGP_HASH_SHA256, rng);
     key->revalidate(*secring);
     assert_int_equal(key->expiration(), 6);
+    rng_destroy(&rng);
 
     pubring = new rnp_key_store_t(PGP_KEY_STORE_GPG, KEYSIG_PATH "alice-sub-pub.pgp");
     assert_true(rnp_key_store_load_from_path(pubring, NULL));

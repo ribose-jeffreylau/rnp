@@ -9,6 +9,8 @@ on:
       - 'docs/**'
       - '**.adoc'
       - '**.md'
+      - '.github/workflows/*.yml'
+      - '!.github/workflows/centos7.yml'
   pull_request:
     paths-ignore:
       - 'docs/**'
@@ -22,13 +24,15 @@ env:
   LC_ALL: en_US.UTF-8
   LC_LANG: en_US.UTF-8
   USE_STATIC_DEPENDENCIES: yes
+  BOTAN_VERSION: 2.17.3 # NOTE: 2.18.x may need newer GCC versions to build
+  DOWNLOAD_RUBYRNP: Off
 
 jobs:
   tests:
     runs-on: ubuntu-latest
     if: "!contains(github.event.head_commit.message, 'skip ci')"
     container:
-      image: centos:7
+      image: ${{ matrix.env.IMAGE }}
     timeout-minutes: 70
     strategy:
       fail-fast: false
@@ -36,18 +40,39 @@ jobs:
         env:
           - BUILD_MODE: normal
             GPG_VERSION: stable
+            CC: gcc
+            CXX: g++
+            IMAGE: centos:7
           - BUILD_MODE: normal
             GPG_VERSION: beta
+            CC: gcc
+            CXX: g++
+            IMAGE: centos:7
+          - BUILD_MODE: normal
+            GPG_VERSION: stable
+            CC: clang
+            CXX: clang++
+            IMAGE: centos:7
+          - BUILD_MODE: normal
+            GPG_VERSION: beta
+            CC: clang
+            CXX: clang++
+            IMAGE: centos:7
+# Sanitize is only been tested with the clang compiler
+# see env-common.inc.sh
           - BUILD_MODE: sanitize
             GPG_VERSION: stable
+            CC: clang
+            CXX: clang++
+            IMAGE: centos:7
           - BUILD_MODE: sanitize
             GPG_VERSION: beta
-          - BUILD_MODE: coverage
-            GPG_VERSION: beta
-            RNP_TESTS: cli_tests
-          - BUILD_MODE: coverage
-            GPG_VERSION: beta
-            RNP_TESTS: rnp_tests
+            CC: clang
+            CXX: clang++
+            IMAGE: centos:7
+# Coverage can only been tested with the GNU compiler
+# Upload only single report from centos8 to the codecov to avoid mess
+    name: ${{ matrix.env.IMAGE }} Botan [mode ${{ matrix.env.BUILD_MODE }}; test type ${{ matrix.env.RNP_TESTS }}; CC ${{ matrix.env.CC }}; GnuPG ${{ matrix.env.GPG_VERSION }}]
     env: ${{ matrix.env }}
     steps:
       - run: |
@@ -71,7 +96,7 @@ jobs:
         uses: actions/cache@v2
         with:
           path: ${{ env.CACHE_DIR }}
-          key: ${{ github.workflow }}-${{ runner.os }}-${{ matrix.env.BUILD_MODE }}-gpg-${{ matrix.env.GPG_VERSION }}-${{ hashFiles('ci/**') }}-${{ hashFiles('.github/workflows/**') }}
+          key: ${{ github.workflow }}-${{ runner.os }}-${{ matrix.env.BUILD_MODE }}-${{ matrix.env.CC }}-gpg-${{ matrix.env.GPG_VERSION }}-${{ hashFiles('ci/**') }}-${{ hashFiles('.github/workflows/**') }}
       - name: Build cache
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
@@ -87,8 +112,9 @@ jobs:
         run: |
           set -euxo pipefail
           nm --defined-only -g $RNP_INSTALL/lib64/librnp*.so > exports
-          grep -qv dst_close exports
-          grep -qw rnp_version_string exports
+          [ $(grep -c dst_close exports) == "0" ]
+          [ $(grep -c Botan exports) == "0" ]
+          [ $(grep -c rnp_version_string_full exports) == "1" ]
   pkgconfig-cmake-target:
     runs-on: ubuntu-latest
     if: "!contains(github.event.head_commit.message, 'skip ci')"

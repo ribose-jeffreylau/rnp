@@ -206,17 +206,19 @@ get_tmp()
 static bool
 is_tmp_path(const char *path)
 {
-    char rlpath[PATH_MAX] = {0};
-    char rltmp[PATH_MAX] = {0};
-    if (!realpath(path, rlpath)) {
-        strncpy(rlpath, path, sizeof(rlpath));
-        rlpath[sizeof(rlpath) - 1] = '\0';
+    char *rlpath = realpath(path, NULL);
+    if (!rlpath) {
+        rlpath = strdup(path);
     }
     const char *tmp = get_tmp();
-    if (!realpath(tmp, rltmp)) {
-        strncpy(rltmp, tmp, sizeof(rltmp));
+    char *      rltmp = realpath(tmp, NULL);
+    if (!rltmp) {
+        rltmp = strdup(tmp);
     }
-    return strncmp(rlpath, rltmp, strlen(rltmp)) == 0;
+    bool res = rlpath && rltmp && !strncmp(rlpath, rltmp, strlen(rltmp));
+    free(rlpath);
+    free(rltmp);
+    return res;
 }
 
 /* Recursively remove a directory.
@@ -1059,6 +1061,55 @@ dump_key_stdout(rnp_key_handle_t key, bool secret)
     }
     auto sec = export_key(key, true, true);
     printf("%.*s", (int) sec.size(), (char *) sec.data());
+}
+
+bool
+check_uid_valid(rnp_key_handle_t key, size_t idx, bool valid)
+{
+    rnp_uid_handle_t uid = NULL;
+    if (rnp_key_get_uid_handle_at(key, idx, &uid)) {
+        return false;
+    }
+    bool val = !valid;
+    rnp_uid_is_valid(uid, &val);
+    rnp_uid_handle_destroy(uid);
+    return val == valid;
+}
+
+bool
+check_uid_primary(rnp_key_handle_t key, size_t idx, bool primary)
+{
+    rnp_uid_handle_t uid = NULL;
+    if (rnp_key_get_uid_handle_at(key, idx, &uid)) {
+        return false;
+    }
+    bool prim = !primary;
+    rnp_uid_is_primary(uid, &prim);
+    rnp_uid_handle_destroy(uid);
+    return prim == primary;
+}
+
+bool
+check_key_valid(rnp_key_handle_t key, bool validity)
+{
+    bool valid = !validity;
+    if (rnp_key_is_valid(key, &valid)) {
+        return false;
+    }
+    return valid == validity;
+}
+
+bool
+check_sub_valid(rnp_key_handle_t key, size_t idx, bool validity)
+{
+    rnp_key_handle_t sub = NULL;
+    if (rnp_key_get_subkey_at(key, idx, &sub)) {
+        return false;
+    }
+    bool valid = !validity;
+    rnp_key_is_valid(sub, &valid);
+    rnp_key_handle_destroy(sub);
+    return valid == validity;
 }
 
 bool

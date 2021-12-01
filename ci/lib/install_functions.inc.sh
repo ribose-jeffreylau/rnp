@@ -10,12 +10,29 @@
 : "${DIST:=}"
 : "${DIST_VERSION:=}"
 : "${DIST_VERSION_ID:=}"
-: "${MINIMUM_RUBY_VERSION:=2.5.0}"
-: "${RECOMMENDED_RUBY_VERSION:=2.5.8}"
+
 : "${MINIMUM_CMAKE_VERSION:=3.20.0}"
+: "${MINIMUM_RUBY_VERSION:=2.5.0}"
+
+: "${RECOMMENDED_BOTAN_VERSION:=2.18.2}"
+: "${RECOMMENDED_JSONC_VERSION:=0.12.1}"
 : "${RECOMMENDED_CMAKE_VERSION:=3.20.5}"
 : "${RECOMMENDED_PYTHON_VERSION:=3.9.2}"
-: "${RECOMMENDED_JSONC_VERSION:=0.12.1}"
+: "${RECOMMENDED_RUBY_VERSION:=2.5.8}"
+: "${RECOMMENDED_BOTAN_VERSION_MSYS:=${RECOMMENDED_BOTAN_VERSION}-1}"
+
+: "${CMAKE_VERSION:=${RECOMMENDED_CMAKE_VERSION}}"
+# if [[ "${OS}" = msys ]]; then
+#   : "${BOTAN_VERSION:=${RECOMMENDED_BOTAN_VERSION_MSYS}}"
+# else
+#   : "${BOTAN_VERSION:=${RECOMMENDED_BOTAN_VERSION}}"
+# fi
+: "${BOTAN_VERSION:=${RECOMMENDED_BOTAN_VERSION}}"
+: "${JSONC_VERSION:=${RECOMMENDED_JSONC_VERSION}}"
+: "${PYTHON_VERSION:=${RECOMMENDED_PYTHON_VERSION}}"
+: "${RUBY_VERSION:=${RECOMMENDED_RUBY_VERSION}}"
+
+
 
 if [[ "${GPG_VERSION}" = 2.3.* || "${GPG_VERSION}" = beta ]]; then
   : "${MINIMUM_AUTOMAKE_VERSION:=1.16.3}"
@@ -23,6 +40,8 @@ else
   : "${MINIMUM_AUTOMAKE_VERSION:=1.16.1}"
 fi
 : "${RECOMMENDED_AUTOMAKE_VERSION:=1.16.4}"
+
+: "${AUTOMAKE_VERSION:=${RECOMMENDED_AUTOMAKE_VERSION}}"
 
 : "${VERBOSE:=1}"
 
@@ -52,6 +71,7 @@ macos_install() {
   rm /usr/local/bin/2to3 || true
   # homebrew fails to update openssl@1.1 1.1.1l to 1.1.1l_1 due to linking failure of nghttp2.h
   brew unlink nghttp2 || true
+  brew update
   brew bundle
   ensure_automake
 }
@@ -158,26 +178,27 @@ declare basic_build_dependencies_yum=(
 )
 
 declare build_dependencies_yum=(
-  ncurses-devel
-  bzip2-devel
-  zlib-devel
-  byacc
-  gettext-devel
   bison
-  ribose-automake116
+  byacc
+  bzip2-devel
+  gettext-devel
+  ncurses-devel
   python3
+  ribose-automake116
   ruby-devel
+  zlib-devel
 )
 
 declare dynamic_build_dependencies_yum=(
+  botan2
   botan2-devel
   json-c12-devel
-  python2-devel # TODO: needed?
+  # python2-devel # TODO: needed?
 )
 
 
 apt_install() {
-  local apt_command=(apt -y -q install "$@")
+  local apt_command=(apt-get -y -q install "$@")
   if command -v sudo >/dev/null; then
     sudo "${apt_command[@]}"
   else
@@ -356,7 +377,7 @@ build_and_install_cmake() {
   local cmake_build=${LOCAL_BUILDS}/cmake
   mkdir -p "${cmake_build}"
   pushd "${cmake_build}"
-  wget https://github.com/Kitware/CMake/releases/download/v"${RECOMMENDED_CMAKE_VERSION}"/cmake-"${RECOMMENDED_CMAKE_VERSION}".tar.gz -O cmake.tar.gz
+  wget https://github.com/Kitware/CMake/releases/download/v"${CMAKE_VERSION}"/cmake-"${CMAKE_VERSION}".tar.gz -O cmake.tar.gz
   tar xzf cmake.tar.gz --strip 1
 
   PREFIX="${PREFIX:-/usr}"
@@ -374,7 +395,7 @@ install_prebuilt_cmake() {
   pushd "${cmake_build}"
   curl -L -o \
     cmake.sh \
-    https://github.com/Kitware/CMake/releases/download/v"${RECOMMENDED_CMAKE_VERSION}"/cmake-"${RECOMMENDED_CMAKE_VERSION}"-"${arch}".sh
+    https://github.com/Kitware/CMake/releases/download/v"${CMAKE_VERSION}"/cmake-"${CMAKE_VERSION}"-"${arch}".sh
 
   PREFIX="${PREFIX:-/usr}"
   mkdir -p "${PREFIX}"
@@ -387,7 +408,7 @@ build_and_install_python() {
   python_build=${LOCAL_BUILDS}/python
   mkdir -p "${python_build}"
   pushd "${python_build}"
-  curl -L -o python.tar.xz https://www.python.org/ftp/python/"${RECOMMENDED_PYTHON_VERSION}"/Python-"${RECOMMENDED_PYTHON_VERSION}".tar.xz
+  curl -L -o python.tar.xz https://www.python.org/ftp/python/"${PYTHON_VERSION}"/Python-"${PYTHON_VERSION}".tar.xz
   tar -xf python.tar.xz --strip 1
   ./configure --enable-optimizations --prefix=/usr && ${MAKE} -j"${MAKE_PARALLEL}" && "${SUDO}" make install
   ${SUDO} ln -sf /usr/bin/python3 /usr/bin/python
@@ -448,7 +469,7 @@ build_and_install_automake() {
   automake_build=${LOCAL_BUILDS}/automake
   mkdir -p "${automake_build}"
   pushd "${automake_build}"
-  curl -L -o automake.tar.xz https://ftp.gnu.org/gnu/automake/automake-${RECOMMENDED_AUTOMAKE_VERSION}.tar.xz
+  curl -L -o automake.tar.xz https://ftp.gnu.org/gnu/automake/automake-${AUTOMAKE_VERSION}.tar.xz
   tar -xf automake.tar.xz --strip 1
   ./configure --enable-optimizations --prefix=/usr && ${MAKE} -j"${MAKE_PARALLEL}" && ${SUDO} make install
   popd
@@ -458,31 +479,67 @@ build_and_install_automake() {
 # asciidoctor is installed with install_asciidoctor
 linux_install_ubuntu() {
   "${SUDO}" apt-get update
-  "${SUDO}" apt-get -y install ruby-dev g++-8 cmake libbz2-dev zlib1g-dev build-essential gettext \
-    ruby-bundler libncurses-dev
+  apt_install \
+    "${util_dependencies_ubuntu[@]}" \
+    "${basic_build_dependencies_ubuntu[@]}" \
+    "${build_dependencies_ubuntu[@]}" \
+    "$@"
 
+  ubuntu_install_dynamic_build_dependencies_if_needed
   ensure_automake
 }
+
+ubuntu_install_dynamic_build_dependencies_if_needed() {
+  if ! is_use_static_dependencies; then
+    ubuntu_install_dynamic_build_dependencies
+  fi
+}
+
+ubuntu_install_dynamic_build_dependencies() {
+  apt_install \
+    "${dynamic_build_dependencies_ubuntu[@]}"
+}
+
+declare util_dependencies_ubuntu=()
 
 declare util_dependencies_deb=(
   sudo
   wget
   git
+  software-properties-common
+  # botan # Debian 9 does not have botan in default repos?
+)
+
+declare basic_build_dependencies_ubuntu=(
+  build-essential
+  cmake
 )
 
 declare basic_build_dependencies_deb=(
   autoconf
   automake
-  make
   build-essential
-  cmake
+  curl
   libtool
 )
 
+declare build_dependencies_ubuntu=(
+  gettext
+  libbz2-dev
+  libncurses-dev
+  python3
+  python3-venv
+  ruby-dev
+  zlib1g-dev
+)
+
+declare dynamic_build_dependencies_ubuntu=(
+  botan
+  libbotan-2-dev
+)
+
 declare build_dependencies_deb=(
-  bison
-  byacc
-  curl
+  # botan # Debian 9 does not have botan in default repos?
   gettext
   libbz2-dev
   libncurses5-dev
@@ -490,6 +547,16 @@ declare build_dependencies_deb=(
   python3
   python3-venv
   ruby-dev
+  zlib1g-dev
+)
+
+declare ruby_build_dependencies_ubuntu=(
+  bison
+  curl
+  libbz2-dev
+  libssl-dev
+  ruby-bundler
+  rubygems
   zlib1g-dev
 )
 
@@ -511,6 +578,16 @@ linux_install_debian() {
     "${build_dependencies_deb[@]}" \
     "$@"
 
+  if [ "${CC-gcc}" = "clang" ]; then
+# Add apt.llvm.org repository and install clang
+# We may use https://packages.debian.org/stretch/clang-3.8 as well but this package gets installed to
+# /usr/lib/clang... and requires update-alternatives which would be very ugly considering CC/CXX environment
+# settings coming from yaml already
+    wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
+    ${SUDO} apt-add-repository "deb http://apt.llvm.org/stretch/ llvm-toolchain-stretch main"
+    ${SUDO} apt-get install -y clang
+  fi
+
   ensure_automake
   build_and_install_cmake
 }
@@ -524,8 +601,6 @@ linux_install() {
 msys_install() {
   local packages=(
     tar
-    zlib-devel
-    libbz2-devel
     git
     automake
     autoconf
@@ -535,19 +610,26 @@ msys_install() {
     make
     pkg-config
     mingw64/mingw-w64-x86_64-cmake
-    mingw64/mingw-w64-x86_64-gcc
-    mingw64/mingw-w64-x86_64-json-c
     mingw64/mingw-w64-x86_64-python3
   )
 
-  pacman --noconfirm -S --needed "${packages[@]}"
+  if [ "${CC}" = "gcc" ]; then
+    packages+=(mingw64/mingw-w64-x86_64-gcc
+               mingw64/mingw-w64-x86_64-libbotan
+               mingw64/mingw-w64-x86_64-json-c
+    )
+  else
+    packages+=(clang64/mingw-w64-clang-x86_64-clang
+               clang64/mingw-w64-clang-x86_64-openmp
+               clang64/mingw-w64-clang-x86_64-libc++
+               clang64/mingw-w64-clang-x86_64-libbotan
+               clang64/mingw-w64-clang-x86_64-libssp
+               clang64/mingw-w64-clang-x86_64-json-c
+               clang64/mingw-w64-clang-x86_64-libsystre
+    )
+  fi
 
-  # any version starting with 2.14 up to 2.17.3 caused the application to hang
-  # as described in https://github.com/randombit/botan/issues/2582
-  # fixed with https://github.com/msys2/MINGW-packages/pull/7640/files
-  botan_pkg="mingw-w64-x86_64-libbotan-2.17.3-2-any.pkg.tar.zst"
-  pacman --noconfirm -U https://repo.msys2.org/mingw/x86_64/${botan_pkg} || \
-  pacman --noconfirm -U https://sourceforge.net/projects/msys2/files/REPOS/MINGW/x86_64/${botan_pkg}
+  pacman --noconfirm -S --needed "${packages[@]}"
 
   # msys includes ruby 2.6.1 while we need lower version
   #wget http://repo.msys2.org/mingw/x86_64/mingw-w64-x86_64-ruby-2.5.3-1-any.pkg.tar.xz -O /tmp/ruby-2.5.3.pkg.tar.xz
@@ -628,13 +710,16 @@ ensure_ruby() {
     centos|fedora)
       yum_install "${ruby_build_dependencies_yum[@]}"
       setup_rbenv
-      rbenv install -v "${RECOMMENDED_RUBY_VERSION}"
-      rbenv global "${RECOMMENDED_RUBY_VERSION}"
+      rbenv install -v "${RUBY_VERSION}"
+      rbenv global "${RUBY_VERSION}"
       rbenv rehash
       sudo chown -R "$(whoami)" "$(rbenv prefix)"
       ;;
     debian)
       apt_install "${ruby_build_dependencies_deb[@]}"
+      ;;
+    ubuntu)
+      apt_install "${ruby_build_dependencies_ubuntu[@]}"
       ;;
     *)
       # TODO: handle ubuntu?
@@ -689,6 +774,7 @@ is_version_at_least() {
   installed_version="$("$@")"
 
   # shellcheck disable=SC2181
+  # shellcheck disable=SC2295
   if [[ $? -ne 0 ]]; then
     need_to_build=1
   else

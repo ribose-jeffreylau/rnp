@@ -9,6 +9,8 @@ on:
       - 'docs/**'
       - '**.adoc'
       - '**.md'
+      - '.github/workflows/*.yml'
+      - '!.github/workflows/debian9.yml'
   pull_request:
     paths-ignore:
       - 'docs/**'
@@ -29,6 +31,7 @@ env:
 
 jobs:
   tests:
+    name: ${{ matrix.env.IMAGE }} [CC ${{ matrix.env.CC }}; GnuPG stable]
     runs-on: ubuntu-latest
     if: "!contains(github.event.head_commit.message, 'skip ci')"
     container:
@@ -37,11 +40,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-# I386: actions/checkout@V2,  actions/cache@V2 actions/cache@V2 
-#       give error about OCI container [https://github.com/actions/checkout/issues/334]
-#                                      [https://github.com/actions/runner/issues/1011]
         env:
-          - CPU: i386
+          - CC: gcc
+            CXX: g++
+            CPU: i386
+            IMAGE: "i386/debian:9"
+          - CC: clang
+            CXX: clang++
+            CPU: i386
             IMAGE: "i386/debian:9"
     env: ${{ matrix.env }}
     steps:
@@ -49,11 +55,14 @@ jobs:
         run: |
           apt update
           apt -y install git sudo
-      
+
+# I386: actions/checkout@V2,  actions/cache@V2 actions/cache@V2
+#       give error about OCI container [https://github.com/actions/checkout/issues/334]
+#                                      [https://github.com/actions/runner/issues/1011]
       - name: Check out repository
         uses: actions/checkout@v1
         with:
-          fetch-depth: 1
+          fetch-depth: 10
 
       - name: Setup noncacheable dependencies
         run: |
@@ -61,7 +70,7 @@ jobs:
           ci/install_noncacheable_dependencies.sh
         shell: bash
 
-#      - name: Cache 
+#      - name: Cache
 #        id: cache
 #        uses: actions/cache@v2
 #        with:

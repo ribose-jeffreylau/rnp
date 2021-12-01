@@ -172,7 +172,7 @@ adjust_hash_alg(rnp_keygen_crypto_params_t &crypto)
                                 ecdsa_get_min_hash(crypto.ecc.curve) :
                                 dsa_get_min_hash(crypto.dsa.q_bitlen);
 
-    if (pgp_digest_length(crypto.hash_alg) < pgp_digest_length(min_hash)) {
+    if (rnp::Hash::size(crypto.hash_alg) < rnp::Hash::size(min_hash)) {
         crypto.hash_alg = min_hash;
     }
 }
@@ -308,12 +308,6 @@ set_default_user_prefs(pgp_user_prefs_t &prefs)
     }
 }
 
-static const char *
-pgp_show_pka(pgp_pubkey_alg_t pka)
-{
-    return id_str_pair::lookup(pubkey_alg_map, pka);
-}
-
 static void
 keygen_primary_merge_defaults(rnp_keygen_primary_desc_t &desc)
 {
@@ -366,51 +360,35 @@ pgp_generate_primary_key(rnp_keygen_primary_desc_t *desc,
     }
 
     // generate the raw key and fill tag/secret fields
-    pgp_transferable_key_t tkeysec;
-    if (!pgp_generate_seckey(&desc->crypto, &tkeysec.key, true)) {
-        return false;
-    }
-
-    pgp_transferable_userid_t *uid =
-      transferable_key_add_userid(tkeysec, (char *) desc->cert.userid);
-    if (!uid) {
-        RNP_LOG("failed to add userid");
-        return false;
-    }
-
-    if (!transferable_userid_certify(
-          tkeysec.key, *uid, tkeysec.key, desc->crypto.hash_alg, desc->cert)) {
-        RNP_LOG("failed to certify key");
-        return false;
-    }
-
-    pgp_transferable_key_t tkeypub;
     try {
-        tkeypub = pgp_transferable_key_t(tkeysec, true);
-        *primary_pub = tkeypub;
-    } catch (const std::exception &e) {
-        RNP_LOG("failed to copy public key part: %s", e.what());
-        return false;
-    }
+        pgp_key_pkt_t secpkt;
+        if (!pgp_generate_seckey(desc->crypto, secpkt, true)) {
+            return false;
+        }
 
-    switch (secformat) {
-    case PGP_KEY_STORE_GPG:
-    case PGP_KEY_STORE_KBX:
-        try {
-            *primary_sec = tkeysec;
-        } catch (const std::exception &e) {
-            RNP_LOG("%s", e.what());
+        pgp_key_t sec(secpkt);
+        pgp_key_t pub(secpkt, true);
+        sec.add_uid_cert(desc->cert, desc->crypto.hash_alg, *desc->crypto.rng, &pub);
+
+        switch (secformat) {
+        case PGP_KEY_STORE_GPG:
+        case PGP_KEY_STORE_KBX:
+            *primary_sec = std::move(sec);
+            *primary_pub = std::move(pub);
+            break;
+        case PGP_KEY_STORE_G10:
+            *primary_pub = std::move(pub);
+            if (!load_generated_g10_key(primary_sec, &secpkt, NULL, primary_pub)) {
+                RNP_LOG("failed to load generated key");
+                return false;
+            }
+            break;
+        default:
+            RNP_LOG("invalid format");
             return false;
         }
-        break;
-    case PGP_KEY_STORE_G10:
-        if (!load_generated_g10_key(primary_sec, &tkeysec.key, NULL, primary_pub)) {
-            RNP_LOG("failed to load generated key");
-            return false;
-        }
-        break;
-    default:
-        RNP_LOG("invalid format");
+    } catch (const std::exception &e) {
+        RNP_LOG("Failure: %s", e.what());
         return false;
     }
 
@@ -501,7 +479,7 @@ pgp_generate_subkey(rnp_keygen_subkey_desc_t *     desc,
     }
 
     // generate the raw key pair
-    if (!pgp_generate_seckey(&desc->crypto, &tskeysec.subkey, false)) {
+    if (!pgp_generate_seckey(desc->crypto, tskeysec.subkey, false)) {
         goto end;
     }
 

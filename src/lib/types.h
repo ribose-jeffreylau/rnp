@@ -96,11 +96,6 @@ class id_str_pair {
                               int                         notfound = 0);
 };
 
-typedef struct {
-    uint8_t     mask;
-    const char *string;
-} pgp_bit_map_t;
-
 /** pgp_fingerprint_t */
 typedef struct pgp_fingerprint_t {
     uint8_t  fingerprint[PGP_FINGERPRINT_SIZE];
@@ -267,11 +262,12 @@ typedef struct pgp_sig_subpkt_t {
         } revocation_key; /* 5.2.3.15.  Revocation Key */
         uint8_t *issuer;  /* 5.2.3.5.   Issuer */
         struct {
-            uint8_t     flags[4];
-            unsigned    nlen;
-            unsigned    vlen;
-            const char *name;
-            const char *value;
+            uint8_t        flags[4];
+            unsigned       nlen;
+            unsigned       vlen;
+            bool           human;
+            const uint8_t *name;
+            const uint8_t *value;
         } notation; /* 5.2.3.16.  Notation Data */
         struct {
             bool no_modify;
@@ -427,6 +423,12 @@ typedef struct rnp_selfsig_cert_info_t {
     uint32_t         key_expiration{}; /* key expiration time (sec), 0 = no expiration */
     pgp_user_prefs_t prefs{};          /* user preferences, optional */
     bool             primary : 1;      /* mark this as the primary user id */
+
+    /**
+     * @brief Populate uid and sig packet with data stored in this struct.
+     *        At some point we should get rid of it.
+     */
+    void populate(pgp_userid_pkt_t &uid, pgp_signature_t &sig);
 } rnp_selfsig_cert_info_t;
 
 typedef struct rnp_selfsig_binding_info_t {

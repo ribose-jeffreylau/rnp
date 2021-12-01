@@ -25,13 +25,21 @@
  */
 
 #include "backend_version.h"
-
+#include "logging.h"
 #if defined(CRYPTO_BACKEND_BOTAN)
 #include <botan/version.h>
 #elif defined(CRYPTO_BACKEND_OPENSSL)
 #include <openssl/opensslv.h>
 #include <openssl/crypto.h>
+#include <string.h>
+#include "config.h"
+#ifndef RNP_USE_STD_REGEX
+#include <regex.h>
+#else
+#include <regex>
 #endif
+#endif
+#include <cassert>
 
 namespace rnp {
 
@@ -53,7 +61,42 @@ backend_version()
 #if defined(CRYPTO_BACKEND_BOTAN)
     return Botan::short_version_cstr();
 #elif defined(CRYPTO_BACKEND_OPENSSL)
-    return OpenSSL_version(OPENSSL_VERSION);
+    /* Use regexp to retrieve version (second word) from version string
+     * like "OpenSSL 1.1.1l  24 Aug 2021"
+     * */
+    static char version[32] = {};
+    if (version[0]) {
+        return version;
+    }
+    const char *reg = "OpenSSL (([0-9]\\.[0-9]\\.[0-9])[a-z]*(-beta[0-9])*(-dev)*) ";
+#ifndef RNP_USE_STD_REGEX
+    static regex_t r;
+    regmatch_t     matches[5];
+    const char *   ver = OpenSSL_version(OPENSSL_VERSION);
+
+    if (!strlen(version)) {
+        if (regcomp(&r, reg, REG_EXTENDED) != 0) {
+            RNP_LOG("failed to compile regexp");
+            return "unknown";
+        }
+    }
+    if (regexec(&r, ver, 5, matches, 0) != 0) {
+        return "unknown";
+    }
+    assert(sizeof(version) > matches[1].rm_eo - matches[1].rm_so);
+    memcpy(version, ver + matches[1].rm_so, matches[1].rm_eo - matches[1].rm_so);
+    version[matches[1].rm_eo - matches[1].rm_so] = '\0';
+#else
+    static std::regex re(reg, std::regex_constants::extended);
+    std::smatch       result;
+    std::string       ver = OpenSSL_version(OPENSSL_VERSION);
+    if (!std::regex_search(ver, result, re)) {
+        return "unknown";
+    }
+    assert(sizeof(version) > result[1].str().size());
+    strncpy(version, result[1].str().c_str(), sizeof(version) - 1);
+#endif
+    return version;
 #else
 #error "Unknown backend"
 #endif

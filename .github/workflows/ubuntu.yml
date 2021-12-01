@@ -9,6 +9,8 @@ on:
       - 'docs/**'
       - '**.adoc'
       - '**.md'
+      - '.github/workflows/*.yml'
+      - '!.github/workflows/ubuntu.yml'
   pull_request:
     paths-ignore:
       - 'docs/**'
@@ -23,8 +25,19 @@ env:
 
 jobs:
   tests:
-    runs-on: ubuntu-latest
+    name: ${{ matrix.os }} [CC ${{ matrix.env.CC }}; GnuPG stable]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        env:
+          - CC: gcc
+            CXX: g++
+          - CC: clang
+            CXX: clang++
     if: "!contains(github.event.head_commit.message, 'skip ci')"
+    env: ${{ matrix.env }}
     timeout-minutes: 50
     steps:
       - uses: actions/checkout@v2
@@ -39,7 +52,7 @@ jobs:
         uses: actions/cache@v2
         with:
           path: ${{ env.CACHE_DIR }}
-          key: ${{ github.workflow }}-${{ runner.os }}-${{ env.BUILD_MODE }}-gpg-${{ env.GPG_VERSION }}-${{ hashFiles('ci/**') }}-${{ hashFiles('.github/workflows/**') }}
+          key: ${{ github.workflow }}-${{ runner.os }}-${{ env.BUILD_MODE }}-${{ matrix.env.CC }}-gpg-${{ env.GPG_VERSION }}-${{ hashFiles('ci/**') }}-${{ hashFiles('.github/workflows/**') }}
       - name: Build cache
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
