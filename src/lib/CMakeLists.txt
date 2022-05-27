@@ -334,6 +334,18 @@ else()
   set(namelink_component)
 endif()
 
+# if(IS_ABSOLUTE "${CMAKE_INSTALL_INCLUDEDIR}")
+#   set(PKGCONFIG_TARGET_INCLUDES "${CMAKE_INSTALL_INCLUDEDIR}")
+# else()
+#   set(PKGCONFIG_TARGET_INCLUDES "\${prefix}/${CMAKE_INSTALL_INCLUDEDIR}")
+# endif()
+
+# if(IS_ABSOLUTE "${CMAKE_INSTALL_LIBDIR}")
+#   set(PKGCONFIG_TARGET_LIBDIR "${CMAKE_INSTALL_LIBDIR}")
+# else()
+#   set(PKGCONFIG_TARGET_LIBDIR "\${prefix}/${CMAKE_INSTALL_LIBDIR}")
+# endif()
+
 # add these to the rnp-targets export
 install(TARGETS librnp
   EXPORT rnp-targets
@@ -341,7 +353,7 @@ install(TARGETS librnp
     DESTINATION  "${CMAKE_INSTALL_LIBDIR}"
     COMPONENT runtime
     ${namelink_component}
-  ARCHIVE 
+  ARCHIVE
     DESTINATION  "${CMAKE_INSTALL_LIBDIR}"
     COMPONENT development
 )
