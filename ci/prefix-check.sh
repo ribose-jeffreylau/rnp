@@ -24,12 +24,12 @@ prep() {
 build() {
   mkdir build && pushd build
   cmake -DCMAKE_INSTALL_PREFIX="$tmpdir"/prefix -DCMAKE_INSTALL_INCLUDEDIR="$tmpdir"/prefix-include -DCMAKE_INSTALL_LIBDIR="$tmpdir"/prefix-lib ..
-  # make && make install
+  make && make install
 }
 
 run_test() {
-  echo grep -r "/$tmpdir/prefix" "$tmpdir"
-  ! grep -r "/$tmpdir/prefix" "$tmpdir"
+  echo grep -r "/$tmpdir/prefix" "$tmpdir"/prefix-lib
+  ! grep -r "/$tmpdir/prefix" "$tmpdir"/prefix-lib
 }
 
 main() {
