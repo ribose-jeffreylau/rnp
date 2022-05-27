@@ -18,7 +18,8 @@
         };
         defaultPackage = thePackage;
         devShell = pkgs.mkShell {
-          buildInputs = [
+          inherit (thePackage) nativeBuildInputs;
+          buildInputs = thePackage.buildInputs ++ [
             thePackage
           ];
         };
