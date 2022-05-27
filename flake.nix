@@ -16,6 +16,7 @@
         defaultApp = flake-utils.lib.mkApp {
           drv = defaultPackage;
         };
+        packages.rnp = thePackage;
         defaultPackage = thePackage;
         devShell = pkgs.mkShell {
           inherit (thePackage) nativeBuildInputs;
